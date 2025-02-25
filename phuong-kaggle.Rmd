@@ -1,0 +1,242 @@
+---
+title: "PHUONG Kaggle project DSCI 478"
+output: pdf_document
+date: "2025-02-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Install necessary libraries, INSTALL ONCE THEN COMMENT OUT!!!
+#install.packages(c("tidyverse", "caret", "randomForest", "e1071", "nnet"))
+
+# Load libraries
+library(tidyverse)    
+library(ggplot2)   
+library(dplyr)     
+
+library(caret)        # Machine learning toolkit
+library(randomForest)  # Random Forest
+library(e1071)        # Support Vector Machine (SVM)
+library(nnet)         # Neural Network (MLP)
+```
+
+LOAD DATA SET
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+# Read Titanic data set
+train_df <- read.csv("train.csv", stringsAsFactors = FALSE)
+test_df <- read.csv("test.csv", stringsAsFactors = FALSE)
+
+head(train_df)
+head(test_df)
+```
+
+
+CHECK FOR MISSING VALUES
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+# Count missing values in each column
+colSums(is.na(train_df))
+
+# Remove rows where Age is missing
+train_df <- train_df[!is.na(train_df$Age), ]
+```
+
+DOUBLE CHECK TO MAKE SURE THERE ARE NO MORE MISSING VALUES AFTER REMOVING ROWS TO BE DONE CORRECTLY
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+# Count missing values in each column
+colSums(is.na(train_df))
+```
+
+CONVERT CATEGORICAL VARIABLES TO NUMERIC
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+# Sex: Male -> 0; Females -> 1
+train_df$Sex <- ifelse(train_df$Sex == "male", 0, 1)
+test_df$Sex <- ifelse(test_df$Sex == "male", 0, 1)
+
+# Embarked: "C" (Cherbourg) -> 0; "Q" (Queenstown) -> 1; "S" (Southampton) -> 2
+train_df$Embarked <- ifelse(train_df$Embarked == "C", 0, 
+                            ifelse(train_df$Embarked == "Q", 1, 2))
+test_df$Embarked <- ifelse(test_df$Embarked == "C", 0, 
+                           ifelse(test_df$Embarked == "Q", 1, 2))
+
+# Fare: Round to two decimal places
+train_df$Fare <- round(train_df$Fare, 2)
+test_df$Fare <- round(test_df$Fare, 2)
+
+# Check the first few rows to confirm changes
+head(train_df[, c("PassengerId", "Survived", "Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked")])
+```
+
+SAVE CLEAN DATASET
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+write.csv(train_df, "clean_train.csv", row.names = FALSE)
+write.csv(test_df, "clean_test.csv", row.names = FALSE)
+
+head(train_df)
+```
+
+LOADING CLEAN DATASET
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+# Load the cleaned dataset
+train_df <- read.csv("clean_train.csv", stringsAsFactors = FALSE)
+test_df <- read.csv("clean_test.csv", , stringsAsFactors = FALSE)
+
+# Check the first few rows to verify correctness
+head(train_df)
+colSums(is.na(train_df))
+```
+
+
+DATA EXPLORATORY
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+train_df$Embarked <- factor(train_df$Embarked, levels = c(0, 1, 2), 
+                            labels = c("Cherbourg (C)", "Queenstown (Q)", "Southampton (S)"))
+
+
+embark_counts <- train_df %>%
+  count(Embarked)
+
+ggplot(train_df, aes(x = Embarked, fill = Embarked)) +
+  geom_bar() +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -1, size = 5) + 
+  labs(title = "Number of Passengers Who Embarked at Each Port", 
+       x = "Port of Embarkation", 
+       y = "Number of Passengers") +
+  scale_fill_manual(values = c("blue", "purple", "orange")) +
+  ylim(0, max(table(train_df$Embarked)) * 1.1) +  # Extend y-axis for more space
+  theme_minimal()
+
+
+
+```
+
+
+This bar chart represents the number of Titanic passengers who embarked at three different ports: Southampton (556 passengers), Cherbourg (130 passengers), and Queenstown (28 passengers). Southampton had the highest number of passengers, as it was the Titanic’s primary departure point and a major port in the United Kingdom. Cherbourg, a significant stop in France, saw a moderate number of passengers boarding, while Queenstown, located in Ireland, had the fewest passengers. The clear disparity in embarkation numbers highlights Southampton’s importance as a hub for transatlantic travel.  
+
+The graph also suggests differences in travel patterns among the three ports. Southampton, as the starting point of the voyage, naturally had the largest group of passengers, while Cherbourg likely served as a key stop for European travelers joining the journey. Queenstown, though an embarkation point, had a significantly smaller number of passengers, indicating that it played a minor role in the overall boarding process. This visualization effectively captures the distribution of embarkation and provides insight into how passenger numbers varied by port.
+
+
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+ggplot(train_df, aes(x = Embarked, fill = factor(Pclass))) +
+  geom_bar(position = "fill") +
+  labs(title = "Passenger Class Distribution by Port", x = "Port (C = Cherbourg, Q = Queenstown, S = Southampton)", y = "Proportion") +
+  scale_fill_manual(values = c("gold", "blue", "brown"), labels = c("1st Class", "2nd Class", "3rd Class"))
+
+```
+
+
+The bar chart "Passenger Class Distribution by Port" illustrates the proportion of First-Class, Second-Class, and Third-Class passengers who embarked from Cherbourg, Queenstown, and Southampton. Cherbourg had the highest share of First-Class passengers, suggesting a wealthier group, while Queenstown was dominated by Third-Class passengers, primarily emigrants seeking opportunities in America. Southampton, the largest departure port, had a more balanced mix but still saw a majority of Third-Class travelers, along with the highest proportion of Second-Class passengers.  
+
+This distribution reflects the socioeconomic differences among passengers, which likely influenced survival rates. Cherbourg’s higher proportion of First-Class travelers may explain its relatively better survival outcomes, as wealthier passengers had greater access to lifeboats. Queenstown’s predominantly Third-Class population had lower survival odds due to poorer access and physical barriers on the ship. Meanwhile, Southampton's diverse mix of classes represents the broader passenger demographic of the Titanic, where Third-Class passengers remained the most vulnerable.
+
+
+
+LINEAR REGRESSION MODEL
+
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=30)}
+#  Convert categorical variables to factors
+train_df$Pclass <- as.factor(train_df$Pclass)
+train_df$Sex <- as.factor(train_df$Sex)
+train_df$Embarked <- as.factor(train_df$Embarked)
+
+test_df$Pclass <- as.factor(test_df$Pclass)
+test_df$Sex <- as.factor(test_df$Sex)
+
+# Ensure Embarked levels match between train and test
+test_df$Embarked <- factor(test_df$Embarked, levels = levels(train_df$Embarked))
+
+# Convert Survived to a factor (classification problem)
+train_df$Survived <- as.factor(train_df$Survived)
+
+# Define the formula for logistic regression
+formula <- Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked
+
+# Train a logistic regression model
+logit_model <- glm(formula, data = train_df, family = "binomial")
+
+# Print model summary
+print(summary(logit_model))
+
+# Make probability predictions on training data
+train_prob <- predict(logit_model, train_df, type = "response")
+
+# Convert probabilities to class labels (0 or 1)
+train_pred <- as.factor(ifelse(train_prob > 0.5, 1, 0))
+
+# Evaluate model performance
+conf_matrix <- confusionMatrix(train_pred, train_df$Survived)
+
+# Print confusion matrix and statistics
+print(conf_matrix)
+
+
+```
+
+#### Key Findings from the Logistic Regression Model  
+The logistic regression model identified several factors that played a crucial role in determining whether a passenger survived.  
+
+One of the most significant predictors was passenger class (Pclass). The analysis revealed that first-class passengers had the highest survival rates, while third-class passengers faced the highest mortality rates. Specifically, second-class passengers had a 1.20-unit decrease in log-odds of survival compared to first-class passengers (Estimate = -1.199, p = 0.0003), and third-class passengers had a 2.40-unit decrease (Estimate = -2.403, p < 0.0001). These findings indicate that social class played a decisive role in survival, likely due to better access to lifeboats for wealthier passengers and the physical layout of the ship, which placed third-class passengers in the lower decks.  
+
+Another highly significant factor was sex. The model found that being female greatly increased the probability of survival (Estimate = 2.648, p < 0.0001). This supports historical accounts that women were prioritized in the evacuation process, following the "women and children first" protocol.  
+
+Age also influenced survival, though to a lesser extent. The model showed that each additional year of age slightly decreased survival odds (Estimate = -0.043, p = 0.0002). This suggests that younger passengers had a better chance of survival, possibly because they were given priority or were more physically capable of reaching lifeboats.  
+
+The number of family members traveling together also had an effect. Having more siblings or spouses aboard was associated with lower survival odds (Estimate = -0.365, p = 0.0049). This could be because families tried to stay together, which may have delayed evacuation efforts. However, the number of parents or children aboard did not significantly impact survival (Estimate = -0.062, p = 0.614). One possible explanation is that families with young children were prioritized, but beyond that, the presence of parents or children did not make a meaningful difference.  
+Interestingly, ticket fare was not a significant predictor of survival once passenger class was accounted for (Estimate = 0.0015, p = 0.568). While one might assume that higher ticket prices would indicate a higher survival probability, the model suggests that it was class itself, rather than fare, that mattered most.  
+
+Similarly, embarkation point (Cherbourg, Queenstown, or Southampton) did not have a significant effect on survival. Although passengers from Cherbourg showed slightly better survival rates, the difference was not statistically significant, suggesting that where a passenger boarded was not a crucial factor in survival.  
+
+#### Model Performance Evaluation  
+To assess the accuracy of the logistic regression model, a confusion matrix was generated. The model correctly classified 80.11% of passengers, demonstrating strong predictive performance. The p-value (< 2e-16) confirmed that the model performed significantly better than random guessing.  
+
+A more detailed breakdown of the results showed that the model was better at predicting non-survivors than survivors. The sensitivity (recall for non-survivors) was 86.08%, meaning the model correctly identified 86.08% of those who did not survive. However, the specificity (recall for survivors) was lower, at 71.38%, indicating that the model was slightly less effective at correctly identifying survivors. The balanced accuracy, which averages sensitivity and specificity, was 78.73%, suggesting a well-performing model overall.  
+
+#### Conclusion  
+This analysis confirms that passenger class, sex, and age were the most important determinants of survival on the Titanic. Women and first-class passengers had the highest survival rates, while older individuals and those in third-class were less likely to survive. Having more family members aboard was generally disadvantageous, particularly for those traveling with siblings or spouses. Other factors, such as fare price and embarkation location, had little to no impact on survival.  
+
+Ultimately, this study highlights the harsh reality of social class disparities and the historical prioritization of women and children during the Titanic disaster. By leveraging data analysis techniques, we can gain a deeper understanding of the factors that influenced survival and improve predictive modeling for future historical and real-world applications.
+
+
+
+
+```{r}
+
+
+```
+
+
+
+
+
+```{r}
+
+```
+
+
+
+```{r}
+
+
+
+```
+
+
+
+```{r}
+
+
+
+```
+
+
+
+
