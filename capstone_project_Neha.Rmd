@@ -1,0 +1,154 @@
+---
+title: "Capstone"
+author: "Neha Deshpande"
+date: "2025-02-24"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+options(repos = c(CRAN = "https://cloud.r-project.org/"))
+install.packages("e1071")
+
+library(dplyr)
+library(ggplot2)
+install.packages("e1071")
+install.packages("caret")
+```
+
+```{r}
+library(readr)
+clean_test <- read_csv("Downloads/Kaggle/clean_test.csv")
+clean_train <- read_csv("Downloads/Kaggle/clean_train.csv")
+
+```
+
+```{r}
+clean_train %>%
+  group_by(Survived) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(x = factor(Survived), y = Count, fill = factor(Survived))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Survival Count", x = "Survived", y = "Count") +
+  theme_minimal()
+
+```
+
+
+```{r}
+ggplot(clean_train, aes(x = Age)) +
+  geom_histogram(binwidth = 5, fill = "blue", alpha = 0.7) +
+  labs(title = "Age Distribution", x = "Age", y = "Count") +
+  theme_minimal()
+
+```
+
+
+```{r}
+clean_train %>%
+  group_by(Pclass, Survived) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(x = factor(Pclass), y = Count, fill = factor(Survived))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Survival Rate by Pclass", x = "Pclass", y = "Count") +
+  theme_minimal()
+
+```
+
+```{r}
+clean_train %>%
+  group_by(Sex, Survived) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(x = factor(Sex), y = Count, fill = factor(Survived))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Survival Rate by Sex", x = "Sex", y = "Count") +
+  theme_minimal()
+
+```
+
+```{r}
+ggplot(clean_train, aes(x = factor(Survived), y = Age, fill = factor(Survived))) +
+  geom_boxplot() +
+  labs(title = "Age Distribution by Survival", x = "Survived", y = "Age", fill = "Survived") +
+  theme_minimal()
+```
+
+## First, we started by cleaning the dataset that was provided by Kaggle. Cleaning included the NA, missing, and irrelevant values. Then we printed the summary of the dataset by using summary(clean_train). An important part of data analysis is using exploratory techniques to get an idea of the background of the data. I used several visualizations to show the different patterns and trends that were found in the dataset. The first visualization is a bar plot that shows survival counts. This allows us to see the overall proprtion of surviors and non-survivors. This is followed by a histogram of passenger ages, which helps identify age distributions and possible patterns related to survival. Another grouped bar plot shows survival rates across passenger classes (pclass), revealing that first-class passengers had a higher chance of survival compared to lower classes.  Another plot illustrates survival rates by gender, confirming that female passengers had a significantly higher survival probability than males.
+
+
+```{r}
+features <- c("Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked")
+
+clean_train <- clean_train %>% select(all_of(features), Survived)
+
+clean_test <- clean_test %>% select(all_of(features), PassengerId)
+
+clean_train$Sex <- as.factor(clean_train$Sex)
+clean_train$Embarked <- as.factor(clean_train$Embarked)
+clean_train$Survived <- as.factor(clean_train$Survived)  
+clean_test$Sex <- as.factor(clean_test$Sex)
+clean_test$Embarked <- as.factor(clean_test$Embarked)
+
+clean_train <- na.omit(clean_train)
+clean_test <- na.omit(clean_test)
+
+library(e1071)
+svm_model <- svm(Survived ~ ., data = clean_train, kernel = "linear", cost = 1)
+svm_model
+
+predictions <- predict(svm_model, clean_test)
+
+predicted_survival <- as.numeric(predictions) - 1 
+
+table(clean_train$Survived)  
+prop.table(table(clean_train$Survived))  
+
+summary(svm_model)
+
+library(ggplot2)
+
+ggplot(clean_train, aes(x = Pclass, fill = Survived)) + 
+  geom_bar(position = "fill") + 
+  labs(title = "Survival Rate by Passenger Class", y = "Proportion", x = "Pclass")
+
+if ("Sex_female" %in% colnames(clean_train)) {
+  ggplot(clean_train, aes(x = Sex_female, fill = Survived)) + 
+    geom_bar(position = "fill") + 
+    labs(title = "Survival Rate by Gender (Female)", y = "Proportion", x = "Female (1 = Yes, 0 = No)")
+}
+
+getwd()
+submission <- data.frame(PassengerId = clean_test$PassengerId, Survived = predicted_survival)
+submission
+write.csv(submission, "/Users/nehadeshpande/Documents/submission.csv", row.names = FALSE)
+
+```
+
+```{r}
+library(caret)
+train_predictions <- predict(svm_model, clean_train)
+
+train_actual <- as.factor(clean_train$Survived)
+train_pred <- as.factor(train_predictions)
+
+conf_matrix <- confusionMatrix(train_pred, train_actual)
+
+print(conf_matrix)
+
+accuracy <- conf_matrix$overall["Accuracy"]
+precision <- conf_matrix$byClass["Precision"]
+recall <- conf_matrix$byClass["Recall"]
+f1_score <- conf_matrix$byClass["F1"]
+
+cat("Model Performance Metrics:\n")
+cat("Accuracy:", accuracy, "\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1-score:", f1_score, "\n")
+```
+
+
+## The SVM model code starts by loading and preparing the training data, where selected features are extracted and relevant variables are converted into factors, ensuring that categorical data such as gender and port of embarkation are properly handled. Once the data is cleaned, the SVM model is trained using the svm() function from the e1071 package. The formula Survived ~ . specifies that survival status is the target variable, while all other selected features serve as predictors. After training, predictions are made on the test dataset using predict(), and the results are stored. The survival rate distribution is analyzed using table() and prop.table() to understand class proportions. Titanic survival demonstrates an overall accuracy of 78.01%, meaning it correctly classifies survival outcomes in most cases. The confusion matrix shows that the model successfully identified 360 non-survivors (true negatives) and 197 survivors (true positives). However, it also misclassified 64 passengers as survivors who did not survive (false positives) and 93 passengers as non-survivors who actually survived (false negatives). 
+
+
