@@ -1,0 +1,416 @@
+---
+title: "Witlie Kaggle project DSCI 478"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-02-19"
+---
+
+## Data Cleaning
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Install necessary libraries, INSTALL ONCE THEN COMMENT OUT!!!
+#install.packages(c("tidyverse", "caret", "randomForest", "e1071", "nnet"))
+
+# Load libraries
+library(tidyverse)    
+library(ggplot2)   
+library(dplyr)     
+
+library(caret)        # Machine learning toolkit
+library(randomForest)  # Random Forest
+library(e1071)        # Support Vector Machine (SVM)
+library(nnet)         # Neural Network (MLP)
+```
+
+LOAD DATA SET
+
+```{r}
+# Read Titanic data set
+train_df <- read.csv("train.csv", stringsAsFactors = FALSE)
+test_df <- read.csv("test.csv", stringsAsFactors = FALSE)
+
+head(train_df)
+head(test_df)
+```
+
+CHECK FOR MISSING VALUES
+
+```{r}
+# Count missing values in each column
+colSums(is.na(train_df))
+
+# Remove rows where Age is missing
+train_df <- train_df[!is.na(train_df$Age), ]
+```
+
+DOUBLE CHECK TO MAKE SURE THERE ARE NO MORE MISSING VALUES AFTER REMOVING ROWS TO BE DONE CORRECTLY
+
+```{r}
+# Count missing values in each column
+colSums(is.na(train_df))
+```
+
+CONVERT CATEGORICAL VARIABLES TO NUMERIC
+
+```{r}
+# Sex: Male -> 0; Females -> 1
+train_df$Sex <- ifelse(train_df$Sex == "male", 0, 1)
+test_df$Sex <- ifelse(test_df$Sex == "male", 0, 1)
+
+# Embarked: "C" (Cherbourg) -> 0; "Q" (Queenstown) -> 1; "S" (Southampton) -> 2
+train_df$Embarked <- ifelse(train_df$Embarked == "C", 0, 
+                            ifelse(train_df$Embarked == "Q", 1, 2))
+test_df$Embarked <- ifelse(test_df$Embarked == "C", 0, 
+                           ifelse(test_df$Embarked == "Q", 1, 2))
+
+# Fare: Round to two decimal places
+train_df$Fare <- round(train_df$Fare, 2)
+test_df$Fare <- round(test_df$Fare, 2)
+
+# Check the first few rows to confirm changes
+head(train_df[, c("PassengerId", 
+                  "Survived", 
+                  "Pclass", 
+                  "Sex", 
+                  "Age", 
+                  "SibSp", 
+                  "Parch", 
+                  "Fare", 
+                  "Embarked")])
+```
+
+SAVE CLEAN DATASET
+
+```{r}
+write.csv(train_df, "clean_train.csv", row.names = FALSE)
+write.csv(test_df, "clean_test.csv", row.names = FALSE)
+
+head(train_df)
+```
+
+LOADING CLEAN DATASET
+
+```{r}
+# Load the cleaned dataset
+train_df <- read.csv("clean_train.csv", stringsAsFactors = FALSE)
+test_df <- read.csv("clean_test.csv", , stringsAsFactors = FALSE)
+
+# Check the first few rows to verify correctness
+head(train_df)
+colSums(is.na(train_df))
+```
+
+## Exploratory Data Analysis
+
+For my exploratory data analysis, I focused on variables SibSp and Parch. Sibsp describes the number of siblings or spouses a passenger was accompanied by aboard the ship. Parch describes the number of parents or children a passenger was accompanied by aboard the ship.
+
+```{r}
+# Summarize siblings/spouses aboard and parents/children aboard
+summary(train_df$SibSp)
+summary(train_df$Parch)
+
+# Distribution of siblings/spouses aboard by survival
+table(train_df$SibSp, train_df$Survived)
+
+# Distribution of parents/children aboard by survival
+table(train_df$Parch, train_df$Survived)
+```
+
+```{r}
+# Visualize distribution of number of siblings and spouses aboard
+ggplot(data = train_df, mapping = aes(x = factor(SibSp))) +
+  geom_bar(fill = "darkgreen") +
+  labs(title = "Distribution of SibSp", 
+       x = "Siblings/Spouses Aboard", 
+       y = "Count")
+
+# Visualize distribution of number of parents and children aboard
+ggplot(data = train_df, mapping = aes(x = factor(Parch))) +
+  geom_bar(fill = "navyblue") +
+  labs(title = "Distribution of Parch", 
+       x = "Parents/Children Aboard", 
+       y = "Count")
+```
+
+```{r}
+# Visualize survival by number of siblings/spouses aboard
+ggplot(data = train_df, 
+       mapping = aes(x = factor(SibSp), fill = factor(Survived))) +
+  geom_bar() +
+  labs(title = "Survival by SibSp", 
+       x = "Siblings/Spouses Aboard", 
+       y = "Count", 
+       fill = "Survival Status") +
+  scale_fill_manual(values = c("red", "green"), 
+                    labels = c("Did Not Survive", "Survived"))
+
+# Visualize survival by number of parents/children aboard
+ggplot(data = train_df, 
+       mapping = aes(x = factor(Parch), fill = factor(Survived))) +
+  geom_bar() +
+  labs(title = "Survival by Parch", 
+       x = "Parents/Children Aboard", 
+       y = "Count", 
+       fill = "Survival Status") +
+  scale_fill_manual(values = c("red", "green"), 
+                    labels = c("Did Not Survive", "Survived"))
+```
+
+A smaller proportion of passengers survived than not, but the class imbalance between survival statuses does not appear to be excessive.
+
+```{r}
+# Visualize distribution of siblings/spouses aboard by survival
+ggplot(data = train_df, 
+       mapping = aes(x = factor(Survived), y = SibSp, fill = factor(Survived))) +
+  geom_violin() +
+  labs(title = "SibSp Distribution by Survival", 
+       x = "Survived", 
+       y = "Siblings/Spouses Aboard", 
+       fill = "Survival Status") +
+  scale_fill_manual(values = c("red", "green"), 
+                    labels = c("Did Not Survive", "Survived"))
+
+# Visualize distribution of parents/children aboard by survival
+ggplot(data = train_df, 
+       mapping = aes(x = factor(Survived), y = Parch, fill = factor(Survived))) +
+  geom_violin() +
+  labs(title = "Parch Distribution by Survival", 
+       x = "Survived", 
+       y = "Parents/Children Aboard", 
+       fill = "Survival Status") +
+  scale_fill_manual(values = c("red", "green"), 
+                    labels = c("Did Not Survive", "Survived"))
+```
+
+The vast majority of passengers did not have any family on board with them. Passengers with more than 2 family members aboard were relatively rare. No passengers with familial relations greater than 4 siblings/spouses or 5 parents/children survived.
+
+```{r}
+# Visualize survival distribution of siblings/spouses aboard by class
+ggplot(data = train_df, 
+       mapping = aes(x = factor(SibSp), fill = factor(Survived))) +
+  geom_bar(position = "fill") +
+  facet_wrap(~ Pclass) +
+  labs(title = "Survival by SibSp Across Classes", 
+       x = "Siblings/Spouses Aboard", 
+       y = "Proportion", 
+       fill = "Survival Status") +
+  scale_fill_manual(values = c("red", "green"), 
+                    labels = c("Did Not Survive", "Survived"))
+
+# Visualize survival distribution of parents/children aboard by class
+ggplot(data = train_df, 
+       mapping = aes(x = factor(Parch), fill = factor(Survived))) +
+  geom_bar(position = "fill") +
+  facet_wrap(~ Pclass) +
+  labs(title = "Survival by Parch Across Classes", 
+       x = "Parents/Children Aboard", 
+       y = "Proportion", 
+       fill = "Survival Status") +
+  scale_fill_manual(values = c("red", "green"), 
+                    labels = c("Did Not Survive", "Survived"))
+```
+
+After visualizing the distribution of surviving and non-surviving passengers by class and familial relations, it was clear to see that larger families were more common in the lowest class (class 3). The proportion of surviving passengers was much higher for those belonging to the higher classes (class 1 and 2) than for class 3.
+
+## Random Forest
+
+One approach to a binary classification problem such as this Titanic challenge is a random forest. A random forest is a type of classification model that trains multiple decision trees on randomized subsets of the data and assigns a classification based on the combined predictions of each tree. Random forests do not assume linearity or normality, as they are a type of non-parametric model that is able to capture non-linear relationships in the data.
+
+```{r}
+str(train_df)
+
+# Set factor variables as factors
+
+train_df$Survived <- as.factor(train_df$Survived)
+train_df$Pclass <- as.factor(train_df$Pclass)
+train_df$Sex <- as.factor(train_df$Sex)
+train_df$SibSp <- as.factor(train_df$SibSp)
+train_df$Parch <- as.factor(train_df$Parch)
+train_df$Embarked <- as.factor(train_df$Embarked)
+
+str(train_df)
+```
+
+```{r}
+# Create random forest model
+set.seed(478)
+
+rfmodel <- randomForest(Survived ~ ., data = train_df, proximity = T)
+
+rfmodel
+```
+
+```{r}
+# Create error rate data frame
+oob_error_data <- data.frame(
+  Trees = rep(1:nrow(rfmodel$err.rate), times = 3),
+  Type = rep(c("OOB", "Did Not Survive", "Survived"), each = nrow(rfmodel$err.rate)),
+  Error = c(rfmodel$err.rate[, "OOB"], 
+            rfmodel$err.rate[, "0"],
+            rfmodel$err.rate[, "1"])
+)
+
+# Visualize error rates
+ggplot(data = oob_error_data, mapping = aes(x = Trees, y = Error)) +
+  geom_line(mapping = aes(color = Type)) +
+  labs(title = "Random Forest Error Rates", 
+       x = "Number of Trees", 
+       y = "Error Rate", 
+       color = "Error Type") +
+  scale_color_manual(values = c("red", "blue" ,"green"), 
+                     labels = c("Did Not Survive", "OOB" ,"Survived"))
+```
+
+The default parameters for a random forest in R is 500 trees and 3 variables tried at each split. This default model produced an out-of-bag (OOB) error rate of 17.65%. The “survived” class suffered a greater frequency of erroneous predictions (class error 26.55%) than the “did not survive” class (class error 11.56%). This means that the model is most often committing Type 1 error, incorrectly predicting that passengers survived when they did not.
+
+The graph above visualizes the OOB error rate, "survived" class error rate, and "did not survive" class error rate for each addition of a decision tree.
+
+In order to improve these error rates, I tried increasing the number of trees included in the model from 500 to 1000. 
+
+```{r}
+# Create model with increased number of trees (1000)
+rfmodel2 <- randomForest(Survived ~ ., data = train_df, ntree = 1000, proximity = T)
+
+# Check error rates
+rfmodel2
+
+# Create new error data frame
+oob_error_data2 <- data.frame(
+  Trees = rep(1:nrow(rfmodel2$err.rate), times = 3),
+  Type = rep(c("OOB", "Did Not Survive", "Survived"), each = nrow(rfmodel2$err.rate)),
+  Error = c(rfmodel2$err.rate[, "OOB"], 
+            rfmodel2$err.rate[, "0"],
+            rfmodel2$err.rate[, "1"])
+)
+
+# Visualize error rates
+ggplot(data = oob_error_data2, mapping = aes(x = Trees, y = Error)) +
+  geom_line(mapping = aes(color = Type)) +
+  labs(title = "Random Forest Error Rates", 
+       x = "Number of Trees", 
+       y = "Error Rate", 
+       color = "Error Type") +
+  scale_color_manual(values = c("red", "blue" ,"green"), 
+                     labels = c("Did Not Survive", "OOB" ,"Survived"))
+```
+
+Increasing the number of decision trees only slightly improved the OOB error rate to 17.37% and the “survived” class error rate to 25.86%, while the “did not survive” class error remained the same (11.56%).
+
+In the graph above, you can see that the error rates plateau as the number of trees increases, indicating that we should not expect to see an improvement in error rates by the addition of more decision trees.
+
+Next, I checked which number of variables checked at each split would result in the lowest OOB error rate. The default is 3 variables, and I checked from 1 to 10 variables.
+
+```{r}
+# Determine best number of variables to try at each split
+
+oob_values <- vector(length = 10)
+
+for(i in 1:10) {
+  temp_model <- randomForest(Survived ~ ., data = train_df, mtry = i, ntree = 1000)
+  oob_values[i] <- temp_model$err.rate[nrow(temp_model$err.rate), 1]
+}
+
+oob_values
+```
+
+The number of variables that produced the lowest OOB error rate (17.23%) was 4 variables. 
+
+```{r}
+# Update model
+rfmodel3 <- randomForest(Survived ~ ., 
+                         data = train_df, 
+                         mtry = 4, 
+                         ntree = 1000, 
+                         proximity = T)
+
+# Check error rates
+rfmodel3
+
+# Create new error data frame
+oob_error_data3 <- data.frame(
+  Trees = rep(1:nrow(rfmodel3$err.rate), times = 3),
+  Type = rep(c("OOB", "Did Not Survive", "Survived"), each = nrow(rfmodel3$err.rate)),
+  Error = c(rfmodel3$err.rate[, "OOB"], 
+            rfmodel3$err.rate[, "0"],
+            rfmodel3$err.rate[, "1"])
+)
+
+# Visualize error rates
+ggplot(data = oob_error_data3, mapping = aes(x = Trees, y = Error)) +
+  geom_line(mapping = aes(color = Type)) +
+  labs(title = "Random Forest Error Rates", 
+       x = "Number of Trees", 
+       y = "Error Rate", 
+       color = "Error Type") +
+  scale_color_manual(values = c("red", "blue" ,"green"), 
+                     labels = c("Did Not Survive", "OOB" ,"Survived"))
+```
+
+The new OOB error rate did not improve from the last model using 1000 trees and 3 variables per split and instead remained the same (17.37%). This new model with 1000 trees and 4 variables per split does show a slight improvement in the "survived" class error (now 25.17%), but also a slight increase in the "did not survive" class error (12.03%).
+
+To visualize classification of this model, I created a multidimensional scaling (MDS) plot. 
+
+```{r}
+# Create multidimensional scaling plot
+distance_matrix <- dist(1 - rfmodel3$proximity)
+
+mds_info <- cmdscale(distance_matrix, eig = T, x.ret = T)
+
+mds_var_per <- round(mds_info$eig / sum(mds_info$eig) * 100, 1)
+
+mds_values <- mds_info$points
+mds_data <- data.frame(Sample = rownames(mds_values),
+                       X = mds_values[, 1],
+                       Y = mds_values[, 2],
+                       Status = train_df$Survived)
+
+ggplot(data = mds_data, mapping = aes(x = X, y = Y, label = Sample)) +
+  geom_text(mapping = aes(color = Status), alpha = 0.75) +
+  labs(title = "MDS plot using (1 - Random Forest Proximities)", 
+       color = "Survival Status", 
+       x = paste("MDS1 - ", mds_var_per[1], "%", sep = ""), 
+       y = paste("MDS2 - ", mds_var_per[2], "%", sep = "")) +
+  scale_color_manual(values = c("red", "green"), 
+                     labels = c("Did Not Survive", "Survived"))
+```
+
+MDS plots visualize the relative similarities between points in a data set, with closer points denoting greater similarity and further points denoting greater dissimilarity. This plot shows the individuals classified as "survived" in green on the left and individuals classified as "did not survive" in red on the right. Visually it is clear that many data points appear to have been misclassfied. 
+
+The percentages included on the axes of the graph denote the amount of variation in the distance matrix that each dimension accounts for. The Y axis accounts for 12% of variation in the distance matrix, and the X axis accounts for 37.5%.
+
+## Generating Predictions
+
+```{r}
+# Add empty "Survived" column to test_df
+library(tibble)
+test_df <- add_column(test_df, Survived = rep(NA, nrow(test_df)), .after = "PassengerId")
+```
+
+```{r}
+# Ensure variables are same type in both data sets
+for(col in names(train_df)) {
+  if (is.factor(train_df[[col]])) {
+    test_df[[col]] <- factor(test_df[[col]], levels = levels(train_df[[col]]))
+  }
+}
+
+# Create predictions using random forest model
+test_predictions <- predict(rfmodel3, test_df)
+
+predictions <- data.frame(PassengerId = test_df$PassengerId, Survived = test_predictions)
+
+head(predictions)
+```
+
+## Conclusion
+
+The random forest model performed decently well, with an accuracy rate of 82.63% (1 - OOB error). Due to the model's black box nature, it does not lend much interpretability or insight into feature importance. 
+
+The "survived" class error rate was 12.03%, and the "did not survive" class error rate was 25.17%. This model is prone to greater Type 1 error than Type 2, meaning that it more often incorrectly classifies non-surviving passengers as "survived" rather than surviving passengers as "did not survive". 
+
+My exploratory analysis suggested that larger families were more common in the lowest class (class 3), and that members of the third class survived at a much lower frequency than members of the first and second classes. This corroborates historical understanding. Due to limited access to lifeboats, ship layout, and physical barriers such as gates separating classes aboard the ship, third class passengers are much more likely to have lost their lives on the Titanic.
+
+Bowdoin. (n.d.). Disproportionate Devastation. Titanic. https://courses.bowdoin.edu/history-2203-fall-2020-kmoyniha/reflection/#:~:text=There%20is%20no%20doubt%20that,passengers%20was%20not%20necessarily%20surprising. 
